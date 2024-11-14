@@ -70,6 +70,7 @@ initializeClient();
 require('./api/send-message')(app, client, state);
 require('./api/send-image-message')(app, client, state);
 require('./api/generate-and-send-pdf')(app, client, state); // Add this line to include the new endpoint
+require('./api/send-message-group')(app, client, state);
 
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
