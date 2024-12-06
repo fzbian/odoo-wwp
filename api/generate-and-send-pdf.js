@@ -6,13 +6,17 @@ const sendMessageWithRetry = require('./utils/sendMessageWithRetry');
 
 module.exports = (app, client, state) => {
     app.post('/generate-and-send-pdf', async (req, res) => {
-        const { pos_name, group_name } = req.body;
+        const { pos_name, number } = req.body;
 
-        if (!pos_name || !group_name) {
-            return res.status(400).json({ error: 'Faltan parámetros. Se requiere POS_NAME y group_name.' });
+        if (!pos_name || !number) {
+            return res.status(400).json({ error: 'Faltan parámetros. Se requiere POS_NAME y número.' });
         }
 
-        exec(`python generate_pdf.py ${pos_name}`, async (error, stdout, stderr) => {
+        if (!state.isReady) {
+            return res.status(503).json({ error: 'Cliente de WhatsApp aún no está listo.' });
+        }
+
+        exec(`python3 generate_pdf.py ${pos_name}`, async (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error ejecutando generate_pdf.py: ${error.message}`);
                 return res.status(500).json({ error: 'Error generando el PDF' });
@@ -27,13 +31,10 @@ module.exports = (app, client, state) => {
             const media = MessageMedia.fromFilePath(pdfPath);
 
             try {
-                const chats = await client.getChats();
-                const group = chats.find(chat => chat.isGroup && chat.name === group_name);
-                if (!group) {
-                    return res.status(404).json({ error: 'Grupo no encontrado' });
-                }
+                const jid = `${number}@c.us`;
+                console.log("Enviando PDF al número:", jid);
 
-                await sendMessageWithRetry(client, group.id._serialized, media);
+                await sendMessageWithRetry(client, jid, media);
                 fs.unlinkSync(pdfPath); // Delete the PDF file after sending the message
                 res.status(200).json({ status: 'PDF generado, enviado y eliminado correctamente' });
             } catch (sendError) {
@@ -43,3 +44,4 @@ module.exports = (app, client, state) => {
         });
     });
 };
+
