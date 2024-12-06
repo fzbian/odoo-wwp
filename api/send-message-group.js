@@ -14,8 +14,14 @@ module.exports = (app, client, state) => {
 
         try {
             const chats = await client.getChats();
-            const group = chats.find(chat => chat.isGroup && chat.name === group_name);
+            console.log('Chats retrieved:', chats.map(chat => ({
+                id: chat.id,
+                name: chat.name,
+                isGroup: chat.isGroup
+            }))); // Log relevant details of each chat for debugging
+            const group = chats.find(chat => chat.name === group_name);
             if (!group) {
+                console.log(`Group with name ${group_name} not found`); // Log specific group not found
                 return res.status(404).json({ error: 'Grupo no encontrado' });
             }
 
