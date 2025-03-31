@@ -2,6 +2,8 @@ import xmlrpc.client
 from fpdf import FPDF
 from datetime import datetime, timedelta
 import sys
+import json
+import os
 
 url = 'http://137.184.137.192:8069/'
 db = 'odoo'
@@ -337,6 +339,59 @@ def get_sales_details(session_id):
     
     return sales_details
 
+def load_withdrawals_db():
+    """Load the cash withdrawals database from JSON file"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cash_withdrawals.json')
+    if os.path.exists(db_path):
+        try:
+            with open(db_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("Warning: Withdrawals database corrupted, creating new one")
+            return {}
+    return {}
+
+def save_withdrawals_db(db_data):
+    """Save the cash withdrawals database to JSON file"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cash_withdrawals.json')
+    try:
+        with open(db_path, 'w', encoding='utf-8') as f:
+            json.dump(db_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving withdrawals database: {e}")
+
+def save_cash_withdrawals(pos_name, session_date, cash_out):
+    """Save cash withdrawals to the JSON database"""
+    # Format date as YYYY-MM-DD for consistent database keys
+    date_key = session_date.strftime('%Y-%m-%d')
+    
+    # Load existing database
+    db = load_withdrawals_db()
+    
+    # Initialize structure if needed
+    if pos_name not in db:
+        db[pos_name] = {}
+    
+    if date_key not in db[pos_name]:
+        db[pos_name][date_key] = {}
+    
+    # Add each withdrawal with its reason and amount
+    for movement in cash_out:
+        reason = movement['payment_ref']
+        amount = abs(movement['amount'])  # Store as positive value
+        
+        # Handle duplicate reasons by appending a counter
+        base_reason = reason
+        counter = 1
+        while reason in db[pos_name][date_key]:
+            reason = f"{base_reason} ({counter})"
+            counter += 1
+            
+        db[pos_name][date_key][reason] = amount
+    
+    # Save updated database
+    save_withdrawals_db(db)
+
 def generate_pdf(session_data):
     try:
         pdf = FPDF()
@@ -377,6 +432,10 @@ def generate_pdf(session_data):
         
         # Get data
         cash_in, cash_out = get_cash_movements(session_data['id'])
+        
+        # Save cash withdrawals to JSON database
+        save_cash_withdrawals(pos_name, date_obj, cash_out)
+        
         sorted_methods, other_sales, cash_sales = get_sales_by_payment_method(session_data['id'])
 
         # Cash summary section
