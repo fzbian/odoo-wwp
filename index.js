@@ -4,6 +4,7 @@ const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 const path = require('path');
 const { exec } = require('child_process');
+const os = require('os');
 const sendMessageWithRetry = require('./api/utils/sendMessageWithRetry');
 
 const app = express();
@@ -17,12 +18,26 @@ const state = {
 
 let client;
 
+// Detectar automáticamente el ejecutable de Chrome según el sistema operativo
+let executablePath = null;
+
+switch (os.platform()) {
+  case 'linux':
+    executablePath = '/usr/bin/chromium-browser';
+    break;
+  case 'darwin':
+    executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    break;
+  case 'win32':
+    executablePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+    break;
+}
+
 function initializeClient() {
   client = new Client({
     puppeteer: {
       headless: true,
-      executablePath: '/usr/bin/chromium-browser',
-      //executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
