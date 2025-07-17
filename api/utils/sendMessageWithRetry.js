@@ -28,60 +28,64 @@ async function verifyMessageSent(client, jid, messageText, timeWindow = 10000) {
     }
 }
 
-module.exports = async function sendMessageWithRetry(client, jid, message, retries = 3) {
-    let attempt = 0;
-    while (attempt < retries) {
-        attempt++;
-        console.log(`📤 Intento ${attempt}/${retries} - Enviando mensaje...`);
+async function notifyAdmin(client, originalJid, originalMessage, error) {
+    try {
+        const adminJid = '573206359839@c.us';
+        const notification = `� ALERTA: No se pudo enviar mensaje
         
-        try {
-            // Intentar enviar el mensaje (puede fallar con error interno)
-            await client.sendMessage(jid, message);
-        } catch (error) {
-            // Ignorar errores específicos de serialización que no afectan el envío
-            if (!error.message.includes('serialize') && 
-                !error.message.includes('getMessageModel')) {
-                console.error(`❌ Error real enviando mensaje:`, error.message);
-                
-                // Solo reinicializar en casos específicos de desconexión
-                if (error.message.includes('Session closed') || error.message.includes('Protocol error')) {
-                    console.log('🔄 Reinicializando cliente...');
-                    try {
-                        await client.initialize();
-                        await new Promise(resolve => setTimeout(resolve, 5000));
-                    } catch (initError) {
-                        console.error('❌ Error reinicializando cliente:', initError);
-                    }
-                }
-                
-                // Si es un error real y no el último intento, continuar
-                if (attempt < retries) {
-                    console.log(`⏳ Esperando 3 segundos antes del siguiente intento...`);
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    continue;
-                }
-            }
-        }
+📱 Destinatario: ${originalJid}
+💬 Mensaje: "${originalMessage}"
+❌ Error: ${error}
+⏰ Hora: ${new Date().toLocaleString('es-CO')}`;
         
-        // Siempre verificar si el mensaje fue enviado (independiente del error)
-        console.log('🔍 Verificando si el mensaje fue enviado...');
+        await client.sendMessage(adminJid, notification);
+        console.log('📨 Notificación enviada al administrador');
+    } catch (notifyError) {
+        console.error('❌ Error enviando notificación al administrador:', notifyError);
+    }
+}
+
+module.exports = async function sendMessageWithRetry(client, jid, message) {
+    try {
+        console.log('📤 Enviando mensaje...');
+        
+        // Intentar enviar el mensaje
+        await client.sendMessage(jid, message);
+        
+        // Verificar si el mensaje fue enviado
+        console.log('� Verificando si el mensaje fue enviado...');
         const isVerified = await verifyMessageSent(client, jid, message);
         
         if (isVerified) {
-            console.log('✅ Mensaje confirmado como enviado correctamente');
+            console.log('✅ Mensaje enviado y verificado correctamente');
             return true;
         } else {
-            console.log(`⚠️ Mensaje no verificado en intento ${attempt}/${retries}`);
+            console.log('❌ Mensaje no verificado');
+            await notifyAdmin(client, jid, message, 'Mensaje no verificado en la conversación');
+            return false;
+        }
+        
+    } catch (error) {
+        // Ignorar errores específicos de serialización que no afectan el envío
+        if (error.message.includes('serialize') || error.message.includes('getMessageModel')) {
+            console.log('⚠️ Error de serialización ignorado, verificando mensaje...');
             
-            // Si ya alcanzamos el máximo de intentos, salir
-            if (attempt >= retries) {
-                console.error('🚫 Máximo de intentos alcanzado, mensaje no enviado.');
+            // Verificar si el mensaje fue enviado a pesar del error
+            const isVerified = await verifyMessageSent(client, jid, message);
+            
+            if (isVerified) {
+                console.log('✅ Mensaje enviado correctamente (error de serialización ignorado)');
+                return true;
+            } else {
+                console.log('❌ Mensaje no verificado tras error de serialización');
+                await notifyAdmin(client, jid, message, 'Error de serialización y mensaje no verificado');
                 return false;
             }
-            
-            console.log(`⏳ Esperando 3 segundos antes del siguiente intento...`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+        } else {
+            // Error real
+            console.error('❌ Error real enviando mensaje:', error.message);
+            await notifyAdmin(client, jid, message, error.message);
+            return false;
         }
     }
-    return false;
 };
